@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum HookStatus {
+  DRAFT
+  PENDING_REVIEW
+  WAITING_MATCH
+  ASSIGNED
+  ANSWERED
+  CLOSED
+  EXPIRED
+  REJECTED
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  VIEWED
+  ANSWERED
+  DECLINED
+  REPORTED
+  EXPIRED
+  CLOSED
+}
+
+enum PreferenceScope {
+  LONG_TERM
+  RECENT
+  NEXT_HOOK
+}
+
+enum MatchActionType {
+  THANK
+  INTERESTED
+  REJECT
+  REPORT
+}
+
+model User {
+  id                  String              @id @default(cuid())
+  email               String              @unique
+  emailVerifiedAt     DateTime?
+  passwordHash        String
+  status              UserStatus          @default(ACTIVE)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  profile             UserProfile?
+  hooks               Hook[]              @relation("HookAuthor")
+  assignments         HookAssignment[]    @relation("HookRecipient")
+  receiverPreferences ReceiverPreference[]
+  replies             HookReply[]
+  actions             MatchAction[]
+  sentMessages        Message[]           @relation("MessageSender")
+  reports             Report[]             @relation("ReportReporter")
+  sessions            Session[]
+}
+
+model EmailVerificationCode {
+  id        String   @id @default(cuid())
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([email, expiresAt])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model UserProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  nickname       String?
+  school         String?
+  grade          String?
+  city           String?
+  bio            String?
+  interests      String[] @default([])
+  relationshipGoal String?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ReceiverPreference {
+  id                    String          @id @default(cuid())
+  userId                String
+  scope                 PreferenceScope
+  topicTypes            String[]        @default([])
+  responseModes         String[]        @default([])
+  depthLevel            String?
+  excludedTypes         String[]        @default([])
+  naturalLanguage       String?
+  effectiveFrom         DateTime        @default(now())
+  effectiveUntil        DateTime?
+  createdAt             DateTime        @default(now())
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, scope, effectiveUntil])
+}
+
+model Hook {
+  id                  String            @id @default(cuid())
+  authorId            String
+  title               String
+  content             String
+  category            String
+  preferredResponses  String[]          @default([])
+  depthLevel          String?
+  excludedResponses   String[]          @default([])
+  status              HookStatus        @default(DRAFT)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  author              User              @relation("HookAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  assignment          HookAssignment?
+  replies             HookReply[]
+  actions             MatchAction[]
+
+  @@index([authorId, status])
+  @@index([status, createdAt])
+}
+
+model HookAssignment {
+  id               String           @id @default(cuid())
+  hookId           String           @unique
+  recipientId      String
+  score            Float
+  matchReason      String?
+  status           AssignmentStatus @default(ASSIGNED)
+  assignedAt       DateTime         @default(now())
+  viewedAt         DateTime?
+  respondedAt      DateTime?
+  closedAt         DateTime?
+  hook             Hook             @relation(fields: [hookId], references: [id], onDelete: Cascade)
+  recipient        User             @relation("HookRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  reply            HookReply?
+
+  @@index([recipientId, assignedAt])
+}
+
+model HookReply {
+  id           String         @id @default(cuid())
+  hookId       String
+  assignmentId String         @unique
+  recipientId  String
+  content      String
+  createdAt    DateTime       @default(now())
+  hook         Hook           @relation(fields: [hookId], references: [id], onDelete: Cascade)
+  assignment   HookAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  recipient    User           @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+}
+
+model MatchAction {
+  id        String          @id @default(cuid())
+  hookId    String
+  userId    String
+  action    MatchActionType
+  createdAt DateTime        @default(now())
+  hook      Hook            @relation(fields: [hookId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([hookId, userId])
+}
+
+model Report {
+  id         String   @id @default(cuid())
+  reporterId String
+  targetType String
+  targetId   String
+  reason     String
+  createdAt  DateTime @default(now())
+  reporter   User     @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([targetType, targetId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String
+  readAt         DateTime?
+  createdAt      DateTime @default(now())
+  sender         User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}

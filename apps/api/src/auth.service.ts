@@ -1,0 +1,118 @@
+import { BadRequestException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { createHash, randomBytes, randomInt, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
+import { PrismaService } from './prisma.service';
+
+const scrypt = promisify(scryptCallback);
+const SESSION_DAYS = 30;
+
+type PublicUser = {
+  id: string;
+  email: string;
+  status: string;
+  profile: {
+    nickname: string | null;
+    school: string | null;
+    grade: string | null;
+    city: string | null;
+    bio: string | null;
+    interests: string[];
+    relationshipGoal: string | null;
+  } | null;
+};
+
+@Injectable()
+export class AuthService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async sendEmailCode(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const recent = await this.prisma.emailVerificationCode.findFirst({ where: { email: normalizedEmail, createdAt: { gt: new Date(Date.now() - 60_000) } } });
+    if (recent) throw new BadRequestException('验证码发送过于频繁，请稍后再试');
+    if (await this.prisma.user.findUnique({ where: { email: normalizedEmail } })) throw new BadRequestException('该邮箱已经注册');
+    const code = randomInt(100000, 1000000).toString();
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = process.env.EMAIL_FROM;
+    if (!apiKey || !from) throw new ServiceUnavailableException('邮件服务尚未配置');
+    await this.prisma.emailVerificationCode.create({ data: { email: normalizedEmail, codeHash: this.hashVerificationCode(normalizedEmail, code), expiresAt: new Date(Date.now() + 10 * 60_000) } });
+    const response = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to: [normalizedEmail], subject: 'Hook 注册验证码', html: `<p>你的 Hook 注册验证码是：</p><h1 style="letter-spacing: 6px">${code}</h1><p>验证码 10 分钟内有效，请勿将它告诉别人。</p>` }) });
+    if (!response.ok) throw new ServiceUnavailableException('验证码发送失败，请检查 Resend 配置');
+    return { message: '验证码已发送' };
+  }
+
+  async register(email: string, password: string, nickname?: string, verificationCode?: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!verificationCode) throw new BadRequestException('请输入邮箱验证码');
+    const record = await this.prisma.emailVerificationCode.findFirst({ where: { email: normalizedEmail, usedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'desc' } });
+    if (!record || record.codeHash !== this.hashVerificationCode(normalizedEmail, verificationCode)) throw new BadRequestException('验证码错误或已过期');
+    const existing = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (existing) throw new BadRequestException('该邮箱已经注册');
+
+    const passwordHash = await this.hashPassword(password);
+    const user = await this.prisma.$transaction(async (tx) => {
+      await tx.emailVerificationCode.update({ where: { id: record.id }, data: { usedAt: new Date() } });
+      return tx.user.create({ data: { email: normalizedEmail, emailVerifiedAt: new Date(), passwordHash, profile: { create: { nickname: nickname?.trim() || null } } }, include: { profile: true } });
+    });
+
+    return { user: this.publicUser(user), token: await this.createSession(user.id) };
+  }
+
+  async login(email: string, password: string) {
+    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() }, include: { profile: true } });
+    if (!user || user.status !== 'ACTIVE' || !(await this.verifyPassword(password, user.passwordHash))) {
+      throw new UnauthorizedException('邮箱或密码错误');
+    }
+
+    return { user: this.publicUser(user), token: await this.createSession(user.id) };
+  }
+
+  async getUserFromToken(token: string) {
+    const tokenHash = this.hashToken(token);
+    const session = await this.prisma.session.findUnique({ where: { tokenHash }, include: { user: { include: { profile: true } } } });
+    if (!session || session.expiresAt <= new Date() || session.user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('登录已失效');
+    }
+    return this.publicUser(session.user);
+  }
+
+  async updateProfile(userId: string, data: { nickname?: string; school?: string; grade?: string; city?: string; bio?: string; interests?: string[]; relationshipGoal?: string }) {
+    return this.prisma.userProfile.upsert({
+      where: { userId },
+      create: { userId, ...data },
+      update: data,
+    });
+  }
+
+  private async createSession(userId: string) {
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+    await this.prisma.session.create({ data: { userId, tokenHash: this.hashToken(token), expiresAt } });
+    return token;
+  }
+
+  private async hashPassword(password: string) {
+    const salt = randomBytes(16).toString('hex');
+    const derivedKey = (await scrypt(password, salt, 64)) as Buffer;
+    return `${salt}:${derivedKey.toString('hex')}`;
+  }
+
+  private async verifyPassword(password: string, stored: string) {
+    const [salt, keyHex] = stored.split(':');
+    if (!salt || !keyHex) return false;
+    const derivedKey = (await scrypt(password, salt, 64)) as Buffer;
+    const storedKey = Buffer.from(keyHex, 'hex');
+    return storedKey.length === derivedKey.length && timingSafeEqual(storedKey, derivedKey);
+  }
+
+  private hashVerificationCode(email: string, code: string) {
+    return createHash('sha256').update(`${email}:${code}`).digest('hex');
+  }
+
+  private hashToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private publicUser(user: any): PublicUser {
+    return { id: user.id, email: user.email, status: user.status, profile: user.profile };
+  }
+}
