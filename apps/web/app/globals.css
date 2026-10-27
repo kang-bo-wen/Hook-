@@ -59,4 +59,41 @@ input:focus,textarea:focus,select:focus { border-color:var(--green); box-shadow:
 .admin-toolbar button { font:inherit; background:transparent; }
 @media(max-width:600px){ .admin-toolbar { align-items:flex-start; flex-direction:column; } }
 @media(max-width:500px){ .code-row { flex-direction:column; } }
+.nav-button { border:0; background:none; color:var(--muted); font:inherit; cursor:pointer; padding:0; }
+.profile-home { max-width:1040px; padding-top:35px; }
+.profile-head { display:flex; align-items:center; gap:16px; margin-bottom:38px; }
+.profile-head h2 { margin:0 0 5px; }
+.profile-head .button { margin-left:auto; }
+.avatar { width:58px; height:58px; display:grid; place-items:center; border-radius:50%; background:var(--green); color:white; font-size:24px; font-weight:700; }
+.muted { color:var(--muted); margin:0; font-size:14px; line-height:1.7; }
+.profile-editor { max-width:none; margin:0 0 55px; }
+.profile-editor h3 { margin:0 0 8px; font-size:20px; }
+.form-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:0 20px; }
+.receive-board-section, .my-hooks { margin:55px 0 75px; }
+.section-heading { display:flex; align-items:end; justify-content:space-between; gap:20px; margin-bottom:22px; }
+.section-heading h2 { margin-bottom:0; }
+.hook-board-wrap { min-height:470px; display:flex; flex-direction:column; align-items:center; position:relative; padding-top:20px; }
+.hook-string { height:105px; width:3px; background:var(--green); }
+.hook-loop { height:54px; width:88px; color:var(--green); font-size:86px; line-height:42px; text-align:center; transform:rotate(180deg); z-index:2; }
+.hook-board { width:min(760px, 94%); min-height:310px; padding:48px 58px 34px; background:#f3d9a4; border:10px solid #d7b878; border-radius:5px; box-shadow:12px 18px 0 #b89559, 0 25px 45px #24452a20; transform:rotate(-1deg); position:relative; }
+.hook-board:before { content:''; position:absolute; inset:14px; border:1px dashed #b89559; pointer-events:none; }
+.hook-board small, .hook-board h3, .hook-board p, .board-foot { position:relative; z-index:1; }
+.hook-board small { color:#876d3d; font-weight:700; }
+.hook-board h3 { font-family:'Noto Serif SC',serif; font-size:30px; line-height:1.4; margin:20px 0 12px; max-width:600px; }
+.hook-board p { font-family:'Noto Serif SC',serif; font-size:18px; line-height:1.9; max-width:600px; }
+.board-foot { display:block; border-top:1px solid #b89559; color:#876d3d; font-size:12px; padding-top:13px; margin-top:28px; }
+.hook-preview-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+.hook-preview, .empty-card { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:23px; transition:transform .2s, box-shadow .2s; }
+.hook-preview:hover { transform:translateY(-3px); box-shadow:0 12px 26px #24452a12; }
+.hook-preview small { color:var(--orange); font-weight:700; }
+.hook-preview h3 { font-family:'Noto Serif SC',serif; font-size:21px; margin:12px 0 8px; }
+.hook-preview p { color:var(--muted); line-height:1.7; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.hook-preview span { color:var(--muted); font-size:12px; }
+.empty-card { color:var(--muted); line-height:1.8; }
+.detail-panel { max-width:760px; }
+.detail-content { font-family:'Noto Serif SC',serif; font-size:22px; line-height:2; white-space:pre-wrap; margin:35px 0; }
+.detail-meta { display:flex; gap:18px; color:var(--muted); font-size:13px; border-top:1px solid var(--line); padding-top:16px; }
+.reply-card { margin-top:24px; padding:18px; background:var(--sage); border-radius:12px; }
+.reply-card small { color:var(--green); }
+@media(max-width:650px){ .profile-head { align-items:flex-start; flex-wrap:wrap; } .profile-head .button { margin-left:74px; } .form-grid,.hook-preview-grid { grid-template-columns:1fr; } .hook-board { padding:40px 28px 25px; } .hook-board h3 { font-size:23px; } .section-heading { align-items:flex-start; flex-direction:column; } }
 @media(max-width:750px){ .navlinks { gap:12px; } .hero { grid-template-columns:1fr; gap:20px; padding-top:30px; } .art { min-height:280px; } .features { grid-template-columns:1fr; } .container { padding-top:30px; } }

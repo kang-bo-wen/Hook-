@@ -101,4 +101,4 @@ Prisma Schema 包含 User、UserProfile、Session、EmailVerificationCode、Rece
 
 ## 安全说明
 
-`.env`、Resend API Key、管理员密码、Token Secret 和真实用户数据不得提交 Git。邮箱、Hook 正文属于敏感数据。上线前应完成安全审查、数据备份/恢复演练和隐私政策准备。
+`.env`、QQ 邮箱授权码、管理员密码、Token Secret 和真实用户数据不得提交 Git。邮箱、Hook 正文属于敏感数据。上线前应完成安全审查、数据备份/恢复演练和隐私政策准备。

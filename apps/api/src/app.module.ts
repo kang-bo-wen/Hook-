@@ -5,6 +5,9 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { HooksController } from './hooks.controller';
 import { HooksService } from './hooks.service';
+import { MailService } from './mail.service';
+import { MatchingService } from './matching.service';
+import { ReceivedController } from './received.controller';
 import { PrismaService } from './prisma.service';
 import { ReceiverPreferencesController } from './receiver-preferences.controller';
 import { ReceiverPreferencesService } from './receiver-preferences.service';
@@ -31,8 +34,8 @@ export class AppController {
 }
 
 @Module({
-  controllers: [AppController, AuthController, UsersController, HooksController, ReceiverPreferencesController, AdminController],
-  providers: [AppService, PrismaService, AuthService, HooksService, ReceiverPreferencesService, AdminService],
+  controllers: [AppController, AuthController, UsersController, HooksController, ReceiverPreferencesController, AdminController, ReceivedController],
+  providers: [AppService, PrismaService, AuthService, MailService, HooksService, ReceiverPreferencesService, AdminService, MatchingService],
   exports: [PrismaService],
 })
 export class AppModule {}

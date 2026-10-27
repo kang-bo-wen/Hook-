@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash, randomBytes, randomInt, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
+import { MailService } from './mail.service';
 import { PrismaService } from './prisma.service';
 
 const scrypt = promisify(scryptCallback);
@@ -23,7 +24,7 @@ type PublicUser = {
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly mail: MailService) {}
 
   async sendEmailCode(email: string) {
     const normalizedEmail = email.trim().toLowerCase();
@@ -31,12 +32,8 @@ export class AuthService {
     if (recent) throw new BadRequestException('验证码发送过于频繁，请稍后再试');
     if (await this.prisma.user.findUnique({ where: { email: normalizedEmail } })) throw new BadRequestException('该邮箱已经注册');
     const code = randomInt(100000, 1000000).toString();
-    const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.EMAIL_FROM;
-    if (!apiKey || !from) throw new ServiceUnavailableException('邮件服务尚未配置');
+    await this.mail.sendVerificationCode(normalizedEmail, code);
     await this.prisma.emailVerificationCode.create({ data: { email: normalizedEmail, codeHash: this.hashVerificationCode(normalizedEmail, code), expiresAt: new Date(Date.now() + 10 * 60_000) } });
-    const response = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to: [normalizedEmail], subject: 'Hook 注册验证码', html: `<p>你的 Hook 注册验证码是：</p><h1 style="letter-spacing: 6px">${code}</h1><p>验证码 10 分钟内有效，请勿将它告诉别人。</p>` }) });
-    if (!response.ok) throw new ServiceUnavailableException('验证码发送失败，请检查 Resend 配置');
     return { message: '验证码已发送' };
   }
 
