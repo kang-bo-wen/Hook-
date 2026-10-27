@@ -19,6 +19,11 @@ type PublicUser = {
     bio: string | null;
     interests: string[];
     relationshipGoal: string | null;
+    personalityTags: string[];
+    languages: string[];
+    availableTimes: string[];
+    communicationStyle: string | null;
+    profileCompletedAt: Date | null;
   } | null;
 };
 
@@ -72,12 +77,33 @@ export class AuthService {
     return this.publicUser(session.user);
   }
 
-  async updateProfile(userId: string, data: { nickname?: string; school?: string; grade?: string; city?: string; bio?: string; interests?: string[]; relationshipGoal?: string }) {
+  async updateProfile(userId: string, data: { nickname?: string; school?: string; grade?: string; city?: string; bio?: string; interests?: string[]; relationshipGoal?: string; personalityTags?: string[]; languages?: string[]; availableTimes?: string[]; communicationStyle?: string }) {
+    const normalized = {
+      ...data,
+      nickname: data.nickname?.trim(),
+      school: data.school?.trim(),
+      grade: data.grade?.trim(),
+      city: data.city?.trim(),
+      bio: data.bio?.trim(),
+      relationshipGoal: data.relationshipGoal?.trim(),
+      interests: this.normalizeList(data.interests),
+      personalityTags: this.normalizeList(data.personalityTags),
+      languages: this.normalizeList(data.languages),
+      availableTimes: this.normalizeList(data.availableTimes),
+    };
+    const current = await this.prisma.userProfile.findUnique({ where: { userId } });
+    const merged = { ...current, ...normalized };
+    const complete = Boolean(merged.nickname && merged.bio && merged.relationshipGoal && (merged.interests?.length || 0) >= 3 && merged.communicationStyle);
     return this.prisma.userProfile.upsert({
       where: { userId },
-      create: { userId, ...data },
-      update: data,
+      create: { userId, ...normalized, profileCompletedAt: complete ? new Date() : null },
+      update: { ...normalized, profileCompletedAt: complete ? current?.profileCompletedAt || new Date() : null },
     });
+  }
+
+  private normalizeList(values?: string[]) {
+    if (!values) return undefined;
+    return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
   }
 
   private async createSession(userId: string) {

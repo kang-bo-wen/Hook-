@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Patch, Post, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateHookDto, UpdateHookDto } from './hooks.dto';
 import { HooksService } from './hooks.service';
@@ -25,6 +25,11 @@ export class HooksController {
   @Patch(':id')
   async update(@Headers('authorization') authorization: string | undefined, @Param('id') id: string, @Body() dto: UpdateHookDto) {
     return this.hooksService.update(await this.userId(authorization), id, dto);
+  }
+
+  @Delete(':id')
+  async remove(@Headers('authorization') authorization: string | undefined, @Param('id') id: string) {
+    return this.hooksService.remove(await this.userId(authorization), id);
   }
 
   @Post(':id/close')

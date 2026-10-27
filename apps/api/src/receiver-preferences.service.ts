@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PreferenceScope } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 import { UpdateReceiverPreferenceDto } from './receiver-preferences.dto';
@@ -15,6 +15,8 @@ export class ReceiverPreferencesService {
   }
 
   async updateNext(userId: string, dto: UpdateReceiverPreferenceDto) {
+    const overlap = dto.topicTypes.filter((topic) => dto.excludedTypes.includes(topic));
+    if (overlap.length) throw new BadRequestException(`同一话题不能同时选择想接收和排除：${overlap.join('、')}`);
     const now = new Date();
     return this.prisma.$transaction(async (tx) => {
       await tx.receiverPreference.updateMany({

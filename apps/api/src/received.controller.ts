@@ -16,6 +16,11 @@ export class ReceivedController {
     return this.matching.markViewed(await this.userId(authorization), id);
   }
 
+  @Post(':id/decline')
+  async decline(@Headers('authorization') authorization: string | undefined, @Param('id') id: string) {
+    return this.matching.decline(await this.userId(authorization), id);
+  }
+
   private async userId(authorization?: string) {
     if (!authorization?.startsWith('Bearer ')) throw new UnauthorizedException('请先登录');
     return (await this.auth.getUserFromToken(authorization.slice(7).trim())).id;

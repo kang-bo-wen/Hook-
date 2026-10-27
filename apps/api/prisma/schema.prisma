@@ -58,6 +58,7 @@ model User {
   profile             UserProfile?
   hooks               Hook[]              @relation("HookAuthor")
   assignments         HookAssignment[]    @relation("HookRecipient")
+  matchLogs           MatchLog[]           @relation("MatchLogRecipient")
   receiverPreferences ReceiverPreference[]
   replies             HookReply[]
   actions             MatchAction[]
@@ -90,16 +91,21 @@ model Session {
 }
 
 model UserProfile {
-  id             String   @id @default(cuid())
-  userId         String   @unique
-  nickname       String?
-  school         String?
-  grade          String?
-  city           String?
-  bio            String?
-  interests      String[] @default([])
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  nickname         String?
+  school           String?
+  grade            String?
+  city             String?
+  bio              String?
+  interests        String[] @default([])
   relationshipGoal String?
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  personalityTags  String[] @default([])
+  languages        String[] @default([])
+  availableTimes   String[] @default([])
+  communicationStyle String?
+  profileCompletedAt DateTime?
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ReceiverPreference {
@@ -133,6 +139,7 @@ model Hook {
   updatedAt           DateTime          @updatedAt
   author              User              @relation("HookAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   assignment          HookAssignment?
+  matchLogs           MatchLog[]
   replies             HookReply[]
   actions             MatchAction[]
 
@@ -148,6 +155,7 @@ model HookAssignment {
   matchReason      String?
   status           AssignmentStatus @default(ASSIGNED)
   assignedAt       DateTime         @default(now())
+  expiresAt        DateTime
   viewedAt         DateTime?
   respondedAt      DateTime?
   closedAt         DateTime?
@@ -156,6 +164,24 @@ model HookAssignment {
   reply            HookReply?
 
   @@index([recipientId, assignedAt])
+  @@index([recipientId, status, assignedAt])
+}
+
+model MatchLog {
+  id          String   @id @default(cuid())
+  hookId      String
+  recipientId String?
+  event       String
+  score       Float?
+  reason      String?
+  details     Json?
+  createdAt   DateTime @default(now())
+  hook        Hook     @relation(fields: [hookId], references: [id], onDelete: Cascade)
+  recipient   User?    @relation("MatchLogRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
+
+  @@index([hookId, createdAt])
+  @@index([recipientId, createdAt])
+  @@index([event, createdAt])
 }
 
 model HookReply {
