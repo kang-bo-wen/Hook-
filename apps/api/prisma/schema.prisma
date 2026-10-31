@@ -190,6 +190,9 @@ model HookReply {
   assignmentId String         @unique
   recipientId  String
   content      String
+  wantsPrivateChat Boolean     @default(false)
+  authorResponse String?
+  authorRespondedAt DateTime?
   createdAt    DateTime       @default(now())
   hook         Hook           @relation(fields: [hookId], references: [id], onDelete: Cascade)
   assignment   HookAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)

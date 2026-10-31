@@ -4,6 +4,7 @@ import { PrismaService } from './prisma.service';
 
 const DAY_MS = 86_400_000;
 const ASSIGNMENT_TTL_MS = 48 * 60 * 60 * 1000;
+const PAIR_COOLDOWN_DAYS = Number(process.env.MATCH_PAIR_COOLDOWN_DAYS ?? (process.env.NODE_ENV === 'production' ? 30 : 0));
 const ACTIVE_ASSIGNMENT_STATUSES: AssignmentStatus[] = [AssignmentStatus.ASSIGNED, AssignmentStatus.VIEWED];
 
 type MatchableHook = {
@@ -72,7 +73,7 @@ export class MatchingService {
   private async assignOne(hook: MatchableHook) {
     return this.prisma.$transaction(async (tx) => {
       const now = new Date();
-      const repeatCutoff = new Date(now.getTime() - 30 * DAY_MS);
+      const repeatCutoff = new Date(now.getTime() - PAIR_COOLDOWN_DAYS * DAY_MS);
       const preferences = await tx.receiverPreference.findMany({
         where: {
           scope: { in: [PreferenceScope.NEXT_HOOK, PreferenceScope.LONG_TERM] }, effectiveUntil: null,
@@ -95,11 +96,13 @@ export class MatchingService {
           tx.hookAssignment.findFirst({ where: { recipientId: preference.userId, status: { in: ACTIVE_ASSIGNMENT_STATUSES } }, select: { id: true } }),
           tx.matchLog.findFirst({ where: { hookId: hook.id, recipientId: preference.userId, event: { in: ['ASSIGNMENT_DECLINED', 'ASSIGNMENT_EXPIRED'] } }, select: { id: true } }),
         ]);
-        const recentPair = await tx.hookAssignment.findFirst({ where: { recipientId: preference.userId, assignedAt: { gte: repeatCutoff }, hook: { authorId: hook.authorId } }, select: { id: true } });
+        const recentPair = PAIR_COOLDOWN_DAYS > 0
+          ? await tx.hookAssignment.findFirst({ where: { recipientId: preference.userId, assignedAt: { gte: repeatCutoff }, hook: { authorId: hook.authorId } }, select: { id: true } })
+          : null;
         if (activeAssignment || previousPair || recentPair || preference.excludedTypes.includes(hook.category) || hook.excludedResponses.some((mode) => preference.responseModes.includes(mode))) { excluded++; continue; }
 
-        let score = 0; const reasons: string[] = [];
-        if (preference.topicTypes.includes(hook.category)) { score += 40; reasons.push('主题符合你的偏好'); } else if (preference.topicTypes.length > 0) score -= 15;
+        let score = 20; const reasons: string[] = ['符合基本接收条件'];
+        if (preference.topicTypes.includes(hook.category)) { score += 40; reasons.push('主题符合你的偏好'); }
         const responseOverlap = hook.preferredResponses.filter((mode) => preference.responseModes.includes(mode)).length;
         if (responseOverlap > 0) { score += Math.min(20, responseOverlap * 10); reasons.push('回应方式合适'); }
         if (hook.depthLevel && preference.depthLevel) { if (hook.depthLevel === preference.depthLevel) { score += 20; reasons.push('交流深度一致'); } else score -= 8; }
@@ -142,5 +145,53 @@ export class MatchingService {
     if (assignment.expiresAt <= new Date()) { await this.releaseAssignment(assignment.id, AssignmentStatus.EXPIRED, '查看时已超过处理期限'); throw new BadRequestException('这个 Hook 已超时，已经重新进入匹配'); }
     if (assignment.status !== AssignmentStatus.ASSIGNED) return assignment;
     return this.prisma.hookAssignment.update({ where: { id: assignmentId }, data: { status: AssignmentStatus.VIEWED, viewedAt: new Date() } });
+  }
+
+  async reply(userId: string, assignmentId: string, content: string, wantsPrivateChat: boolean) {
+    const assignment = await this.prisma.hookAssignment.findUnique({ where: { id: assignmentId }, select: { id: true, recipientId: true, expiresAt: true } });
+    if (!assignment || assignment.recipientId !== userId) throw new NotFoundException('分配记录不存在');
+    if (assignment.expiresAt <= new Date()) {
+      await this.releaseAssignment(assignment.id, AssignmentStatus.EXPIRED, '回应时已超过处理期限');
+      throw new BadRequestException('这个 Hook 已超时，已经重新进入匹配');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.hookAssignment.findUnique({ where: { id: assignmentId }, include: { reply: { select: { id: true } } } });
+      if (!current || current.recipientId !== userId) throw new NotFoundException('分配记录不存在');
+      if (current.reply || current.status === AssignmentStatus.ANSWERED) throw new BadRequestException('这个 Hook 已经回应过了');
+      if (!ACTIVE_ASSIGNMENT_STATUSES.includes(current.status)) throw new BadRequestException('该 Hook 当前不能回应');
+      const now = new Date();
+      if (current.expiresAt <= now) throw new BadRequestException('这个 Hook 已超时，无法回应');
+      const reply = await tx.hookReply.create({ data: { hookId: current.hookId, assignmentId: current.id, recipientId: userId, content: content.trim(), wantsPrivateChat } });
+      await tx.hookAssignment.update({ where: { id: current.id }, data: { status: AssignmentStatus.ANSWERED, respondedAt: now, viewedAt: current.viewedAt || now, closedAt: wantsPrivateChat ? null : now } });
+      await tx.hook.update({ where: { id: current.hookId }, data: { status: HookStatus.ANSWERED } });
+      await tx.matchLog.create({ data: { hookId: current.hookId, recipientId: userId, event: 'ASSIGNMENT_ANSWERED', score: current.score, reason: wantsPrivateChat ? '接收者已回应并期待私聊' : '接收者已提交一次回应' } });
+      return reply;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  async respondToReply(authorId: string, hookId: string, decision: 'ACCEPT' | 'DECLINE' | 'ACK') {
+    return this.prisma.$transaction(async (tx) => {
+      const hook = await tx.hook.findUnique({ where: { id: hookId }, include: { assignment: { include: { reply: true } } } });
+      if (!hook || hook.authorId !== authorId) throw new NotFoundException('Hook 不存在');
+      const reply = hook.assignment?.reply;
+      if (!reply) throw new BadRequestException('这个 Hook 还没有收到回应');
+      if (decision !== 'ACK' && !reply.wantsPrivateChat) throw new BadRequestException('对方没有申请建立私聊');
+      if (reply.authorResponse) throw new BadRequestException('你已经处理过这次回应');
+      const now = new Date();
+      await tx.hookReply.update({ where: { id: reply.id }, data: { authorResponse: decision, authorRespondedAt: now } });
+      await tx.hook.update({ where: { id: hook.id }, data: { status: HookStatus.CLOSED } });
+      const accepted = decision === 'ACCEPT';
+      await tx.matchLog.create({ data: { hookId: hook.id, recipientId: reply.recipientId, event: accepted ? 'PRIVATE_CHAT_ACCEPTED' : decision === 'DECLINE' ? 'PRIVATE_CHAT_DECLINED' : 'REPLY_ACKNOWLEDGED', reason: accepted ? '发帖者同意建立私聊' : decision === 'DECLINE' ? '发帖者婉拒建立私聊' : '发帖者已读并结束本次连接' } });
+      return { decision, hookId };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  async acknowledgeAuthorResponse(userId: string, assignmentId: string) {
+    const assignment = await this.prisma.hookAssignment.findUnique({ where: { id: assignmentId }, include: { reply: true } });
+    if (!assignment || assignment.recipientId !== userId) throw new NotFoundException('分配记录不存在');
+    if (!assignment.reply?.authorResponse) throw new BadRequestException('暂时没有新的贴主回应');
+    if (assignment.status === AssignmentStatus.CLOSED) return { acknowledged: true };
+    await this.prisma.hookAssignment.update({ where: { id: assignmentId }, data: { status: AssignmentStatus.CLOSED, closedAt: new Date() } });
+    return { acknowledged: true };
   }
 }

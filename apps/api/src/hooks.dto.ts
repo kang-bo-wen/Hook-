@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 const responseModes = ['TEXT', 'VOICE', 'QUESTION', 'SHARE'];
 const depthLevels = ['LIGHT', 'MEDIUM', 'DEEP'];
@@ -10,6 +10,7 @@ export class CreateHookDto {
   @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) @IsIn(responseModes, { each: true }) preferredResponses!: string[];
   @IsOptional() @IsString() @IsIn(depthLevels) depthLevel?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) excludedResponses?: string[];
+  @IsOptional() @IsBoolean() saveAsDraft?: boolean;
 }
 
 export class UpdateHookDto {

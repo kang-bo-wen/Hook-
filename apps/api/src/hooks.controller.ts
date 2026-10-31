@@ -32,6 +32,16 @@ export class HooksController {
     return this.hooksService.remove(await this.userId(authorization), id);
   }
 
+  @Post(':id/publish')
+  async publish(@Headers('authorization') authorization: string | undefined, @Param('id') id: string) {
+    return this.hooksService.publish(await this.userId(authorization), id);
+  }
+
+  @Post(':id/cancel-to-draft')
+  async cancelToDraft(@Headers('authorization') authorization: string | undefined, @Param('id') id: string) {
+    return this.hooksService.cancelToDraft(await this.userId(authorization), id);
+  }
+
   @Post(':id/close')
   async close(@Headers('authorization') authorization: string | undefined, @Param('id') id: string) {
     return this.hooksService.close(await this.userId(authorization), id);

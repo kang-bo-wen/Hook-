@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, Patch, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Delete, Headers, Patch, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UpdateProfileDto } from './users.dto';
 
@@ -10,6 +10,12 @@ export class UsersController {
   async updateProfile(@Headers('authorization') authorization: string | undefined, @Body() dto: UpdateProfileDto) {
     const user = await this.authService.getUserFromToken(this.extractToken(authorization));
     return this.authService.updateProfile(user.id, dto);
+  }
+
+  @Delete('me')
+  async deleteAccount(@Headers('authorization') authorization: string | undefined) {
+    const user = await this.authService.getUserFromToken(this.extractToken(authorization));
+    return this.authService.deleteAccount(user.id);
   }
 
   private extractToken(authorization?: string) {

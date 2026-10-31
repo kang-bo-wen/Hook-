@@ -101,6 +101,17 @@ export class AuthService {
     });
   }
 
+  async deleteAccount(userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const activeHook = await tx.hook.findFirst({ where: { authorId: userId, status: { in: ['ASSIGNED', 'ANSWERED'] } }, select: { id: true } });
+      if (activeHook) throw new BadRequestException('还有正在进行的 Hook，请先处理完成后再注销账号');
+      await tx.session.deleteMany({ where: { userId } });
+      await tx.receiverPreference.updateMany({ where: { userId, effectiveUntil: null }, data: { effectiveUntil: new Date() } });
+      await tx.user.update({ where: { id: userId }, data: { status: 'DELETED' } });
+      return { deleted: true };
+    });
+  }
+
   private normalizeList(values?: string[]) {
     if (!values) return undefined;
     return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
