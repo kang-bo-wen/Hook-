@@ -23,6 +23,15 @@ type PublicUser = {
     languages: string[];
     availableTimes: string[];
     communicationStyle: string | null;
+    faculty: string | null;
+    major: string | null;
+    campus: string | null;
+    heightCm: number | null;
+    bodyType: string | null;
+    mbti: string | null;
+    futurePlan: string | null;
+    relationshipPace: string | null;
+    conflictStyle: string | null;
     profileCompletedAt: Date | null;
   } | null;
 };
@@ -77,7 +86,7 @@ export class AuthService {
     return this.publicUser(session.user);
   }
 
-  async updateProfile(userId: string, data: { nickname?: string; school?: string; grade?: string; city?: string; bio?: string; interests?: string[]; relationshipGoal?: string; personalityTags?: string[]; languages?: string[]; availableTimes?: string[]; communicationStyle?: string }) {
+  async updateProfile(userId: string, data: { nickname?: string; school?: string; grade?: string; city?: string; bio?: string; interests?: string[]; relationshipGoal?: string; personalityTags?: string[]; languages?: string[]; availableTimes?: string[]; communicationStyle?: string; faculty?: string; major?: string; campus?: string; heightCm?: number; bodyType?: string; mbti?: string; futurePlan?: string; relationshipPace?: string; conflictStyle?: string }) {
     const normalized = {
       ...data,
       nickname: data.nickname?.trim(),
@@ -86,6 +95,9 @@ export class AuthService {
       city: data.city?.trim(),
       bio: data.bio?.trim(),
       relationshipGoal: data.relationshipGoal?.trim(),
+      faculty: data.faculty?.trim(),
+      major: data.major?.trim(),
+      mbti: data.mbti?.trim().toUpperCase(),
       interests: this.normalizeList(data.interests),
       personalityTags: this.normalizeList(data.personalityTags),
       languages: this.normalizeList(data.languages),
@@ -93,7 +105,7 @@ export class AuthService {
     };
     const current = await this.prisma.userProfile.findUnique({ where: { userId } });
     const merged = { ...current, ...normalized };
-    const complete = Boolean(merged.nickname && merged.bio && merged.relationshipGoal && (merged.interests?.length || 0) >= 3 && merged.communicationStyle);
+    const complete = Boolean(merged.nickname && merged.bio && (merged.interests?.length || 0) >= 3 && merged.communicationStyle && merged.campus && merged.futurePlan);
     return this.prisma.userProfile.upsert({
       where: { userId },
       create: { userId, ...normalized, profileCompletedAt: complete ? new Date() : null },

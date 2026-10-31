@@ -4,26 +4,21 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { apiRequest } from '../api';
 
-const categories = ['日常片段', '认真问题', '兴趣分享', '想认识你'];
+const categories = [['日常片段','一段刚发生的生活'],['认真问题','一个想认真讨论的问题'],['兴趣分享','分享最近着迷的东西'],['想认识你','直接说说想遇见谁']];
+const moods = [['COMFORT','想被安慰'],['THINK','想认真讨论'],['FUN','轻松发疯'],['ACTIVITY','找行动搭子'],['CURIOUS','有点好奇'],['LONELY','有点孤单'],['EXCITED','很兴奋'],['CALM','平静记录']];
+const responseModes = [['TEXT','写一段文字'],['QUESTION','用问题继续'],['SHARE','分享相似经历'],['VOICE','愿意语音']];
 
-export default function PublishClient() {
-  const [category, setCategory] = useState(categories[0]);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+export type EditableHook = { id:string; title:string; content:string; category:string; moodTags:string[]; preferredResponses:string[]; depthLevel:string|null; allowPrivateChatRequest:boolean; revealNickname:boolean; revealProfileTags:boolean };
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await save(event.currentTarget, false);
-  }
-
-  async function save(formElement: HTMLFormElement, saveAsDraft: boolean) {
-    const form = new FormData(formElement);
-    setBusy(true); setError('');
-    try {
-      await apiRequest('/hooks', { method: 'POST', body: JSON.stringify({ title: form.get('title'), content: form.get('content'), category, preferredResponses: ['TEXT'], depthLevel: form.get('depthLevel'), saveAsDraft }) });
-      window.location.href = saveAsDraft ? '/me?drafts=1' : '/me';
-    } catch (e) { setError(e instanceof Error ? e.message : '保存失败'); } finally { setBusy(false); }
-  }
-
-  return <><header className="nav"><Link className="logo" href="/me">h<span>oo</span>k</Link><Link className="back" href="/me">← 返回收件区</Link></header><main className="container"><div className="panel"><div className="eyebrow">发布 / 草稿</div><h2>写下一个 Hook</h2><p className="lede">一次只能发布一个进行中的 Hook，但你可以把更多想法保存在草稿箱。</p><form onSubmit={submit}><div className="form-row"><label htmlFor="title">标题</label><input id="title" name="title" required maxLength={100} /></div><div className="form-row"><label>它属于</label><div className="chips">{categories.map(item => <button type="button" key={item} className={`chip ${category === item ? 'active' : ''}`} onClick={() => setCategory(item)}>{item}</button>)}</div></div><div className="form-row"><label htmlFor="content">内容</label><textarea id="content" name="content" required /></div><div className="form-row"><label htmlFor="depthLevel">希望回应的深度</label><select id="depthLevel" name="depthLevel" defaultValue="MEDIUM"><option value="LIGHT">轻松聊聊</option><option value="MEDIUM">认真回应</option><option value="DEEP">深入一点</option></select></div>{error && <div className="error">{error}</div>}<div className="actions"><button className="button primary" disabled={busy}>发布这个 Hook</button><button type="button" className="button secondary" disabled={busy} onClick={event => save(event.currentTarget.form!, true)}>保存到草稿箱</button></div></form></div></main></>;
+export default function PublishClient({initialHook}:{initialHook?:EditableHook}){
+ const [category,setCategory]=useState(initialHook?.category||categories[0][0]);const [moodTags,setMoodTags]=useState<string[]>(initialHook?.moodTags||[]);const [preferredResponses,setPreferredResponses]=useState<string[]>(initialHook?.preferredResponses||['TEXT']);const [allowPrivateChatRequest,setAllowPrivateChatRequest]=useState(initialHook?.allowPrivateChatRequest??true);const [revealNickname,setRevealNickname]=useState(initialHook?.revealNickname??false);const [revealProfileTags,setRevealProfileTags]=useState(initialHook?.revealProfileTags??false);const [error,setError]=useState('');const [busy,setBusy]=useState(false);
+ const toggle=(value:string,list:string[],set:(next:string[])=>void,limit=8)=>set(list.includes(value)?list.filter(item=>item!==value):list.length<limit?[...list,value]:list);
+ async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();await save(event.currentTarget,false);}
+ async function save(element:HTMLFormElement,saveAsDraft:boolean){const form=new FormData(element);const payload={title:form.get('title'),content:form.get('content'),category,moodTags,preferredResponses,depthLevel:form.get('depthLevel'),excludedResponses:[],allowPrivateChatRequest,revealNickname,revealProfileTags};setBusy(true);setError('');try{if(initialHook){await apiRequest(`/hooks/${initialHook.id}`,{method:'PATCH',body:JSON.stringify(payload)});if(saveAsDraft){window.location.href='/me?drafts=1';}else{const published=await apiRequest<{id:string}>(`/hooks/${initialHook.id}/publish`,{method:'POST'});window.location.href=`/me/hooks/${published.id}`;}}else{const created=await apiRequest<{id:string}>('/hooks',{method:'POST',body:JSON.stringify({...payload,saveAsDraft})});window.location.href=saveAsDraft?'/me?drafts=1':`/me/hooks/${created.id}`;}}catch(e){setError(e instanceof Error?e.message:'保存失败');}finally{setBusy(false);}}
+ return <main className="editor-shell compose-shell"><header className="editor-nav"><Link className="logo" href="/me">h<span>oo</span>k</Link><Link className="back" href={initialHook?'/me?drafts=1':'/me'}>取消</Link></header><form className="compose-card" onSubmit={submit}><div className="compose-heading"><span>{initialHook?'EDIT DRAFT':'NEW HOOK'}</span><h1>{initialHook?'继续完成这段 Hook':'把此刻交给一个人'}</h1></div>{error&&<div className="error">{error}</div>}<input className="title-input" name="title" required maxLength={100} defaultValue={initialHook?.title} placeholder="给这段话一个标题"/><textarea className="story-input" name="content" required defaultValue={initialHook?.content} placeholder="写下你真正想说的话……"/>
+ <div className="compose-options"><div><label>主题标签</label><div className="choice-grid compact-grid">{categories.map(([value,description])=><button type="button" key={value} className={`choice-card ${category===value?'selected':''}`} onClick={()=>setCategory(value)}><strong>{value}</strong><small>{description}</small></button>)}</div></div><div><label>此刻的心情（最多 4 个）</label><div className="chips">{moods.map(([value,label])=><button type="button" key={value} className={`chip ${moodTags.includes(value)?'active':''}`} onClick={()=>toggle(value,moodTags,setMoodTags,4)}>{label}</button>)}</div></div>
+ <div className="form-grid"><div className="form-row"><label>希望收到的回复方式</label><div className="chips">{responseModes.map(([value,label])=><button type="button" key={value} className={`chip ${preferredResponses.includes(value)?'active':''}`} onClick={()=>toggle(value,preferredResponses,setPreferredResponses)}>{label}</button>)}</div></div><div className="form-row"><label>回复深度</label><select name="depthLevel" defaultValue={initialHook?.depthLevel||'MEDIUM'}><option value="LIGHT">轻松聊聊</option><option value="MEDIUM">认真回应</option><option value="DEEP">深入一点</option></select></div></div>
+ <div className="privacy-box"><div><strong>隐私与后续</strong><p>这些设置只作用于这条 Hook。</p></div><Toggle checked={allowPrivateChatRequest} onChange={setAllowPrivateChatRequest} label="允许回复者申请继续认识"/><Toggle checked={revealNickname} onChange={setRevealNickname} label="向回复者展示昵称"/><Toggle checked={revealProfileTags} onChange={setRevealProfileTags} label="展示兴趣与性格标签"/></div></div>
+ <div className="editor-footer"><button type="button" className="text-action" disabled={busy} onClick={event=>save(event.currentTarget.form!,true)}>{initialHook?'保存草稿':'存为草稿'}</button><button className="button primary" disabled={busy||preferredResponses.length===0}>{busy?'处理中…':initialHook?'保存并发布':'发出 Hook'}</button></div></form></main>;
 }
+function Toggle({checked,onChange,label}:{checked:boolean;onChange:(value:boolean)=>void;label:string}){return <label className="toggle-row"><span>{label}</span><input type="checkbox" checked={checked} onChange={event=>onChange(event.target.checked)}/></label>}

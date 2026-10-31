@@ -104,6 +104,16 @@ model UserProfile {
   languages        String[] @default([])
   availableTimes   String[] @default([])
   communicationStyle String?
+  faculty            String?
+  major              String?
+  campus             String?
+  birthYear          Int?
+  heightCm           Int?
+  bodyType           String?
+  mbti               String?
+  futurePlan         String?
+  relationshipPace   String?
+  conflictStyle      String?
   profileCompletedAt DateTime?
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -117,6 +127,19 @@ model ReceiverPreference {
   depthLevel            String?
   excludedTypes         String[]        @default([])
   naturalLanguage       String?
+  expectedGrades        String[]        @default([])
+  minHeightCm           Int?
+  maxHeightCm           Int?
+  expectedFuturePlans   String[]        @default([])
+  campusPreference      Float           @default(0)
+  departmentAvoidance   Float           @default(0)
+  personalitySimilarity Float           @default(0)
+  relationshipPace      String?
+  conflictStyle         String?
+  currentMood           String?
+  writingStyle          String?
+  dailyReceiveLimit     Int             @default(1)
+  strictness            Float           @default(0)
   effectiveFrom         DateTime        @default(now())
   effectiveUntil        DateTime?
   createdAt             DateTime        @default(now())
@@ -131,9 +154,13 @@ model Hook {
   title               String
   content             String
   category            String
+  moodTags            String[]          @default([])
   preferredResponses  String[]          @default([])
   depthLevel          String?
   excludedResponses   String[]          @default([])
+  allowPrivateChatRequest Boolean        @default(true)
+  revealNickname      Boolean            @default(false)
+  revealProfileTags   Boolean            @default(false)
   status              HookStatus        @default(DRAFT)
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt

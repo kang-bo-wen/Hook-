@@ -4,6 +4,7 @@ import { PrismaService } from './prisma.service';
 import { CreateHookDto, UpdateHookDto } from './hooks.dto';
 
 const editableStatuses: HookStatus[] = [HookStatus.DRAFT, HookStatus.WAITING_MATCH];
+const removableHistoricalStatuses: HookStatus[] = [HookStatus.CLOSED, HookStatus.EXPIRED, HookStatus.REJECTED];
 const activePublishingStatuses: HookStatus[] = [HookStatus.WAITING_MATCH, HookStatus.ASSIGNED, HookStatus.ANSWERED];
 
 @Injectable()
@@ -48,11 +49,12 @@ export class HooksService {
 
   async publish(authorId: string, hookId: string) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertCanPublish(tx, authorId, hookId);
-      const hook = await tx.hook.findUnique({ where: { id: hookId }, select: { authorId: true, status: true } });
+      await this.assertCanPublish(tx, authorId);
+      const hook = await tx.hook.findUnique({ where: { id: hookId } });
       if (!hook || hook.authorId !== authorId) throw new NotFoundException('Hook 不存在');
       if (hook.status !== HookStatus.DRAFT) throw new BadRequestException('只有草稿可以发布');
-      return tx.hook.update({ where: { id: hookId }, data: { status: HookStatus.WAITING_MATCH } });
+      const { id: _id, status: _status, createdAt: _createdAt, updatedAt: _updatedAt, ...draftData } = hook;
+      return tx.hook.create({ data: { ...draftData, status: HookStatus.WAITING_MATCH } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
@@ -71,7 +73,9 @@ export class HooksService {
       const hook = await tx.hook.findUnique({ where: { id: hookId }, include: { assignment: { select: { id: true } } } });
       if (!hook) throw new NotFoundException('Hook 不存在');
       if (hook.authorId !== authorId) throw new ForbiddenException('无权删除此 Hook');
-      if (hook.assignment || !editableStatuses.includes(hook.status)) throw new BadRequestException('Hook 已经被分配，不能删除');
+      const isEditableUnassigned = !hook.assignment && editableStatuses.includes(hook.status);
+      const isClosedHistory = removableHistoricalStatuses.includes(hook.status);
+      if (!isEditableUnassigned && !isClosedHistory) throw new BadRequestException('只有草稿、未匹配或已结束的 Hook 可以删除');
       await tx.hook.delete({ where: { id: hookId } });
       return { deleted: true };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

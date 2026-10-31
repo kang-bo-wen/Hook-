@@ -1,56 +1,23 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiRequest, getToken } from '../../../api';
 
-type Hook = {
-  id: string; title: string; content: string; category: string; status: string; createdAt: string;
-  preferredResponses: string[]; depthLevel: string | null;
-  assignment?: { id: string; status: string; assignedAt: string; respondedAt: string | null } | null;
-  replies?: { content: string; createdAt: string }[];
-};
-const categories = ['日常片段', '认真问题', '兴趣分享', '想认识你'];
-const statusLabel: Record<string, string> = { WAITING_MATCH: '等待匹配', ASSIGNED: '已送达', ANSWERED: '已收到回应', CLOSED: '已关闭', DRAFT: '草稿' };
+type Reply = { id:string; content:string; createdAt:string; wantsPrivateChat:boolean; authorResponse:'ACCEPT'|'DECLINE'|'ACK'|null };
+type Hook = { id:string; title:string; content:string; category:string; status:string; createdAt:string; moodTags:string[]; preferredResponses:string[]; depthLevel:string|null; allowPrivateChatRequest:boolean; revealNickname:boolean; revealProfileTags:boolean; assignment?: { status:string; reply?:Reply|null }|null; replies?:Reply[] };
+const labels:Record<string,string>={WAITING_MATCH:'匹配中',ASSIGNED:'已送达，等待回应',ANSWERED:'收到回应',CLOSED:'已结束',DRAFT:'草稿',EXPIRED:'已过期',REJECTED:'未通过'};
+const depthLabels:Record<string,string>={LIGHT:'轻松聊聊',MEDIUM:'认真回应',DEEP:'深入一点'};
+const responseLabels:Record<string,string>={TEXT:'文字回应',QUESTION:'用问题继续',SHARE:'分享相似经历',VOICE:'愿意语音'};
 
-export default function HookDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const [hook, setHook] = useState<Hook | null>(null);
-  const [error, setError] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ title: '', content: '', category: categories[0], depthLevel: 'MEDIUM' });
-
-  useEffect(() => {
-    if (!getToken()) { window.location.href = '/auth'; return; }
-    params.then(({ id }) => apiRequest<Hook>(`/hooks/${id}`)).then(data => {
-      setHook(data);
-      setForm({ title: data.title, content: data.content, category: data.category, depthLevel: data.depthLevel || 'MEDIUM' });
-    }).catch(e => setError(e instanceof Error ? e.message : '加载失败'));
-  }, [params]);
-
-  async function save(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!hook) return;
-    setBusy(true); setError('');
-    try {
-      const updated = await apiRequest<Hook>(`/hooks/${hook.id}`, { method: 'PATCH', body: JSON.stringify(form) });
-      setHook(current => current ? { ...current, ...updated } : updated);
-      setEditing(false);
-    } catch (e) { setError(e instanceof Error ? e.message : '保存失败'); } finally { setBusy(false); }
-  }
-
-  async function remove() {
-    if (!hook || !window.confirm('确定删除这个 Hook 吗？删除后无法恢复。')) return;
-    setBusy(true); setError('');
-    try {
-      await apiRequest(`/hooks/${hook.id}`, { method: 'DELETE' });
-      window.location.href = '/me';
-    } catch (e) { setError(e instanceof Error ? e.message : '删除失败'); setBusy(false); }
-  }
-
-  if (!hook && error) return <main className="container"><div className="error">{error}</div><Link className="button secondary" href="/me">返回我的主页</Link></main>;
-  if (!hook) return <main className="container"><p className="lede">正在打开 Hook…</p></main>;
-  const canManage = !hook.assignment && ['DRAFT', 'WAITING_MATCH'].includes(hook.status);
-
-  return <><header className="nav"><Link className="logo" href="/">h<span>oo</span>k</Link><Link className="back" href="/me">← 返回我的主页</Link></header><main className="container"><article className="panel detail-panel"><div className="eyebrow">我的 Hook · {statusLabel[hook.status] || hook.status}</div>{error && <div className="error">{error}</div>}{editing ? <form onSubmit={save}><div className="form-row"><label htmlFor="title">标题</label><input id="title" required maxLength={100} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></div><div className="form-row"><label>它属于</label><div className="chips">{categories.map(item => <button type="button" key={item} className={`chip ${form.category === item ? 'active' : ''}`} onClick={() => setForm({ ...form, category: item })}>{item}</button>)}</div></div><div className="form-row"><label htmlFor="content">内容</label><textarea id="content" required value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} /></div><div className="form-row"><label htmlFor="depthLevel">希望回应的深度</label><select id="depthLevel" value={form.depthLevel} onChange={e => setForm({ ...form, depthLevel: e.target.value })}><option value="LIGHT">轻松聊聊</option><option value="MEDIUM">认真回应</option><option value="DEEP">深入一点</option></select></div><div className="actions"><button className="button primary" disabled={busy}>{busy ? '保存中…' : '保存修改'}</button><button type="button" className="button secondary" onClick={() => setEditing(false)} disabled={busy}>取消</button></div></form> : <><h2>{hook.title}</h2><p className="detail-content">{hook.content}</p><div className="detail-meta"><span>{hook.category}</span><span>发布于 {new Date(hook.createdAt).toLocaleString('zh-CN')}</span></div>{canManage && <div className="actions"><button className="button primary" onClick={() => setEditing(true)}>重新编辑</button><button className="button secondary" onClick={remove} disabled={busy}>{busy ? '删除中…' : '删除 Hook'}</button></div>}{hook.assignment && <div className="notice">这个 Hook 已经被送达给一位接收者，不能再编辑或删除。</div>}{hook.replies?.map(reply => <div className="reply-card" key={reply.createdAt}><small>收到回应 · {new Date(reply.createdAt).toLocaleString('zh-CN')}</small><p>{reply.content}</p></div>)}</>}</article></main></>;
+export default function HookDetailPage({params}:{params:Promise<{id:string}>}){
+ const [hook,setHook]=useState<Hook|null>(null);const [error,setError]=useState('');const [busy,setBusy]=useState(false);
+ useEffect(()=>{if(!getToken()){window.location.replace('/auth');return;}params.then(({id})=>load(id));},[params]);
+ async function load(id:string){try{setHook(await apiRequest<Hook>(`/hooks/${id}`));}catch(e){setError(e instanceof Error?e.message:'加载失败');}}
+ async function action(path:string,body?:unknown){if(!hook)return;setBusy(true);setError('');try{await apiRequest(path,{method:'POST',body:body?JSON.stringify(body):undefined});await load(hook.id);}catch(e){setError(e instanceof Error?e.message:'操作失败');}finally{setBusy(false);}}
+ async function withdraw(){if(!hook||!window.confirm('确认撤回这条 Hook？撤回后不会回到草稿箱。'))return;await action(`/hooks/${hook.id}/close`);}
+ async function remove(){if(!hook||!window.confirm('永久删除这条 Hook？'))return;setBusy(true);try{await apiRequest(`/hooks/${hook.id}`,{method:'DELETE'});window.location.href='/me?drafts=1';}catch(e){setError(e instanceof Error?e.message:'删除失败');setBusy(false);}}
+ if(!hook)return <main className="editor-shell"><header className="editor-nav"><Link className="logo" href="/me">h<span>oo</span>k</Link><Link className="back" href="/me">返回工作台</Link></header>{error&&<div className="compose-card error">{error}</div>}</main>;
+ const reply=hook.assignment?.reply||hook.replies?.[0];const canDelete=['DRAFT','CLOSED','EXPIRED','REJECTED'].includes(hook.status);
+ return <main className="editor-shell"><header className="editor-nav"><Link className="logo" href="/me">h<span>oo</span>k</Link><Link className="back" href="/me">返回工作台</Link></header><article className="compose-card detail-card"><div className="detail-topline"><div className="eyebrow">SENT HOOK</div><span className="status-pill">{labels[hook.status]||hook.status}</span></div>{error&&<div className="error">{error}</div>}<h1>{hook.title}</h1><p className="detail-content">{hook.content}</p><dl className="detail-meta"><div><dt>主题</dt><dd>{hook.category}</dd></div><div><dt>心情</dt><dd>{hook.moodTags?.join(' · ')||'未设置'}</dd></div><div><dt>期待回应</dt><dd>{hook.preferredResponses?.map(item=>responseLabels[item]||item).join(' · ')||'未设置'}</dd></div><div><dt>回应深度</dt><dd>{depthLabels[hook.depthLevel||'']||'未设置'}</dd></div></dl><div className="privacy-summary"><strong>隐私设置</strong><span>{hook.revealNickname?'展示昵称':'不展示昵称'}</span><span>{hook.revealProfileTags?'展示资料标签':'不展示资料标签'}</span><span>{hook.allowPrivateChatRequest?'允许申请继续认识':'不开放继续认识'}</span></div>{reply&&<div className="reply-card"><small>收到回应 · {new Date(reply.createdAt).toLocaleDateString('zh-CN')}</small><p>{reply.content}</p>{hook.status==='ANSWERED'&&!reply.authorResponse&&<div className="actions"><button className="button primary" disabled={busy} onClick={()=>action(`/received/hook/${hook.id}/respond`,{decision:reply.wantsPrivateChat?'ACCEPT':'ACK'})}>{reply.wantsPrivateChat?'愿意继续认识':'读完并结束'}</button>{reply.wantsPrivateChat&&<button className="button secondary" disabled={busy} onClick={()=>action(`/received/hook/${hook.id}/respond`,{decision:'DECLINE'})}>感谢，但不继续</button>}</div>}</div>}<div className="editor-footer"><span>发布于 {new Date(hook.createdAt).toLocaleDateString('zh-CN')}</span><div className="actions detail-actions">{hook.status==='DRAFT'&&<Link className="button primary" href={`/me/hooks/${hook.id}/edit`}>继续编辑</Link>}{hook.status==='WAITING_MATCH'&&!hook.assignment&&<button className="button secondary danger-action" disabled={busy} onClick={withdraw}>撤回 Hook</button>}{canDelete&&<button className="text-action danger-text" disabled={busy} onClick={remove}>永久删除</button>}</div></div></article></main>;
 }

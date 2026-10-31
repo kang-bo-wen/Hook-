@@ -15,7 +15,8 @@ export class ReceiverPreferencesService {
   }
 
   async updateNext(userId: string, dto: UpdateReceiverPreferenceDto) {
-    const overlap = dto.topicTypes.filter((topic) => dto.excludedTypes.includes(topic));
+    const normalized = { ...dto, expectedGrades: dto.expectedGrades ?? [], expectedFuturePlans: dto.expectedFuturePlans ?? [] };
+    const overlap = normalized.topicTypes.filter((topic) => normalized.excludedTypes.includes(topic));
     if (overlap.length) throw new BadRequestException(`同一话题不能同时选择想接收和排除：${overlap.join('、')}`);
     const now = new Date();
     return this.prisma.$transaction(async (tx) => {
@@ -24,7 +25,7 @@ export class ReceiverPreferencesService {
         data: { effectiveUntil: now },
       });
       return tx.receiverPreference.create({
-        data: { ...dto, userId, scope: PreferenceScope.NEXT_HOOK, effectiveFrom: now },
+        data: { ...normalized, userId, scope: PreferenceScope.NEXT_HOOK, effectiveFrom: now },
       });
     });
   }

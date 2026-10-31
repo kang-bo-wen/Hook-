@@ -12,6 +12,11 @@ export class ReceivedController {
     return this.matching.received(await this.userId(authorization, sessionToken));
   }
 
+  @Get(':id')
+  async detail(@Headers('authorization') authorization: string | undefined, @Headers('x-session-token') sessionToken: string | undefined, @Param('id') id: string) {
+    return this.matching.receivedDetail(await this.userId(authorization, sessionToken), id);
+  }
+
   @Patch(':id/viewed')
   async viewed(@Headers('authorization') authorization: string | undefined, @Headers('x-session-token') sessionToken: string | undefined, @Param('id') id: string) {
     return this.matching.markViewed(await this.userId(authorization, sessionToken), id);

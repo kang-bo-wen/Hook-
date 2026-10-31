@@ -136,7 +136,40 @@ export class MatchingService {
 
   async received(userId: string) {
     await this.expireAssignments();
-    return this.prisma.hookAssignment.findMany({ where: { recipientId: userId }, orderBy: { assignedAt: 'desc' }, include: { hook: { select: { id: true, title: true, content: true, category: true, preferredResponses: true, depthLevel: true, status: true, createdAt: true } }, reply: true } });
+    return this.prisma.hookAssignment.findMany({ where: { recipientId: userId }, orderBy: { assignedAt: 'desc' }, include: { hook: { select: { id: true, title: true, content: true, category: true, moodTags: true, preferredResponses: true, depthLevel: true, allowPrivateChatRequest: true, revealNickname: true, revealProfileTags: true, status: true, createdAt: true, author: { select: { profile: { select: { nickname: true, interests: true, personalityTags: true } } } } } }, reply: true } });
+  }
+
+  async receivedDetail(userId: string, assignmentId: string) {
+    await this.expireAssignments();
+    const assignment = await this.prisma.hookAssignment.findUnique({
+      where: { id: assignmentId },
+      include: {
+        hook: {
+          select: {
+            id: true, title: true, content: true, category: true, moodTags: true, preferredResponses: true, depthLevel: true,
+            allowPrivateChatRequest: true, revealNickname: true, revealProfileTags: true, status: true, createdAt: true,
+            author: { select: { profile: { select: { nickname: true, bio: true, interests: true, personalityTags: true, faculty: true, major: true, campus: true, mbti: true, futurePlan: true, communicationStyle: true } } } },
+          },
+        },
+        reply: true,
+      },
+    });
+    if (!assignment || assignment.recipientId !== userId) throw new NotFoundException('分配记录不存在');
+    const profile = assignment.hook.author.profile;
+    assignment.hook.author.profile = profile ? {
+      ...profile,
+      nickname: assignment.hook.revealNickname ? profile.nickname : null,
+      bio: assignment.hook.revealProfileTags ? profile.bio : null,
+      interests: assignment.hook.revealProfileTags ? profile.interests : [],
+      personalityTags: assignment.hook.revealProfileTags ? profile.personalityTags : [],
+      faculty: assignment.hook.revealProfileTags ? profile.faculty : null,
+      major: assignment.hook.revealProfileTags ? profile.major : null,
+      campus: assignment.hook.revealProfileTags ? profile.campus : null,
+      mbti: assignment.hook.revealProfileTags ? profile.mbti : null,
+      futurePlan: assignment.hook.revealProfileTags ? profile.futurePlan : null,
+      communicationStyle: assignment.hook.revealProfileTags ? profile.communicationStyle : null,
+    } : null;
+    return assignment;
   }
 
   async markViewed(userId: string, assignmentId: string) {
@@ -148,8 +181,9 @@ export class MatchingService {
   }
 
   async reply(userId: string, assignmentId: string, content: string, wantsPrivateChat: boolean) {
-    const assignment = await this.prisma.hookAssignment.findUnique({ where: { id: assignmentId }, select: { id: true, recipientId: true, expiresAt: true } });
+    const assignment = await this.prisma.hookAssignment.findUnique({ where: { id: assignmentId }, select: { id: true, recipientId: true, expiresAt: true, hook: { select: { allowPrivateChatRequest: true } } } });
     if (!assignment || assignment.recipientId !== userId) throw new NotFoundException('分配记录不存在');
+    if (wantsPrivateChat && !assignment.hook.allowPrivateChatRequest) throw new BadRequestException('发布者没有开放继续认识申请');
     if (assignment.expiresAt <= new Date()) {
       await this.releaseAssignment(assignment.id, AssignmentStatus.EXPIRED, '回应时已超过处理期限');
       throw new BadRequestException('这个 Hook 已超时，已经重新进入匹配');
